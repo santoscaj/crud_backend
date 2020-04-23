@@ -1,17 +1,19 @@
 require("@babel/register");
 const Koa = require('koa');
 const json = require('koa-json');
+const cors = require('@koa/cors')
+// const cors = require('koa-cors')
 const KoaRouter = require('koa-router');
 const BodyParser = require('koa-bodyparser');
 const fs = require('fs')
 const app = new Koa()
 const router = new KoaRouter()
 
-const usersFile = '/data/users.json'
+const usersFile = __dirname+'/data/users.json'
 // var userList = []
 
 
-// fs.readFile(__dirname+usersFile,'utf-8',(err,content)=>{
+// fs.readFile(usersFile,'utf-8',(err,content)=>{
 //     userList = JSON.parse(content) || []
 
 //     if(err)
@@ -27,7 +29,7 @@ const usersFile = '/data/users.json'
 
 function userContainsRequiredFields(ctx,newUser){
     if (!newUser.id || !newUser.firstName || !newUser.lastName || !newUser.telephones  ){
-        ctx.response.body = 'Incomplete request. You must include firstName'
+        ctx.body = 'Incomplete request. You must include firstName'
         ctx.throw(400)
         return false;
     }
@@ -45,7 +47,6 @@ function userIdIsUnique(ctx, userId, userList){
 
 function passedTelephoneValidation(ctx, user){
     let idList = []
-    // console.log(user)
     let success = user.telephones.every(tel=>{
         if(!tel.id || !tel.name || !tel.number){
             ctx.response.body = 'Telephone is missing one or more required fields (id, name, number)'
@@ -68,42 +69,52 @@ function passedTelephoneValidation(ctx, user){
     return true
 }
 
-function saveUserList(ctx, userList){
-    fs.writeFile(__dirname+usersFile, JSON.stringify(userList) , 'utf-8', (err)=>{
-        if(err){
-            console.log(err)
-            ctx.throw(500)
-        }else{
-            ctx.response.body = ctx.request.body
-        }
-    })
+// function saveUserList(ctx, userList, bodyToBeReturned){
+//     fs.writeFile(usersFile, JSON.stringify(userList) , 'utf-8', (err)=>{
+//         if(err){
+//             console.log(err)
+//             ctx.throw(500)
+//         }else{
+//             ctx.body = bodyToBeReturned
+            
+//         }
+//     })
+// }
+
+function saveUserList(ctx, userList, bodyToBeReturned){
+    try{
+        fs.writeFileSync(usersFile, JSON.stringify(userList),'utf-8')
+        ctx.body = bodyToBeReturned
+    }catch(err){
+        console.err(err)
+        ctx.throw(500)
+    }
 }
 
 
 router.get('/users', ctx=>{
-    const data = JSON.parse(fs.readFileSync(__dirname+usersFile, {encoding:'utf8', flag:'r'}) )
+    const data = JSON.parse(fs.readFileSync(usersFile, {encoding:'utf8', flag:'r'}) )
     ctx.body = data
 })
 
 router.post('/users', async ctx=>{
     const newUser = ctx.request.body
-    let userList = JSON.parse(fs.readFileSync(__dirname+usersFile, {encoding:'utf8', flag:'r'}))
+    let userList = JSON.parse(fs.readFileSync(usersFile, {encoding:'utf8', flag:'r'}))
 
-    if(!userContainsRequiredFields(ctx, user) || !userIdIsUnique(ctx, user.id, userList))
+    if(!userContainsRequiredFields(ctx, newUser) || !userIdIsUnique(ctx, newUser.id, userList))
         return;
 
     if(!passedTelephoneValidation(ctx, newUser))
         return
     
     userList.push(newUser)
-    saveUserList(ctx, userList)
-    // console.log(ctx.request.rawBody)
+    saveUserList(ctx, userList, newUser)
 })
 
 router.put('/users/:id', async ctx=>{
     const id = ctx.params.id
     const user = ctx.request.body
-    let userList = JSON.parse(fs.readFileSync(__dirname+usersFile, {encoding:'utf8', flag:'r'}))
+    let userList = JSON.parse(fs.readFileSync(usersFile, {encoding:'utf8', flag:'r'}))
 
     if(!userContainsRequiredFields(ctx, user))
         return;
@@ -117,24 +128,26 @@ router.put('/users/:id', async ctx=>{
     else
         userList.push(user)
 
-    saveUserList(ctx, userList)
+    saveUserList(ctx, userList, user)
 })
 
-router.delete('/users/:id', async ctx=>{
+router.del('/users/:id', ctx=>{
     const id = ctx.params.id
-
-    let userList = JSON.parse(fs.readFileSync(__dirname+usersFile, {encoding:'utf8', flag:'r'}))
+    let userList = JSON.parse(fs.readFileSync(usersFile, {encoding:'utf8', flag:'r'}))
 
     let updatedUserIndex = userList.findIndex(u=>u.id===id)  
-    if(updatedUserIndex>-1)
+    if(updatedUserIndex>-1){
         userList.splice(updatedUserIndex, 1)
+        saveUserList(ctx, userList, {})
+    }
     else
         ctx.throw(404)
 
-    saveUserList(ctx, userList)
 })
 
-app.use(json());
-app.use(BodyParser());
-app.use(router.routes()).use(router.allowedMethods())
-app.listen(3000)
+app.use(cors())
+.use(json())
+.use(BodyParser())
+.use(router.routes())
+.use(router.allowedMethods())
+.listen(3000)
