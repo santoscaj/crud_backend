@@ -8,10 +8,24 @@ const BodyParser = require('koa-bodyparser');
 const fs = require('fs')
 const app = new Koa()
 const router = new KoaRouter()
+const SQ = require('./sq')
 
 const usersFile = __dirname+'/data/users.json'
 // var userList = []
 
+async function readFile(fileName){
+    return new Promise((resolve, reject) => {
+        fs.readFile(fileName,'utf-8',(err,content)=>{
+            result = JSON.parse(content) || []
+        
+            if(err)
+                reject(err)
+            else{
+                resolve(result)
+            }
+        })
+    })
+}
 
 // fs.readFile(usersFile,'utf-8',(err,content)=>{
 //     userList = JSON.parse(content) || []
@@ -69,32 +83,31 @@ function passedTelephoneValidation(ctx, user){
     return true
 }
 
-// function saveUserList(ctx, userList, bodyToBeReturned){
-//     fs.writeFile(usersFile, JSON.stringify(userList) , 'utf-8', (err)=>{
-//         if(err){
-//             console.log(err)
-//             ctx.throw(500)
-//         }else{
-//             ctx.body = bodyToBeReturned
-            
-//         }
-//     })
-// }
-
-function saveUserList(ctx, userList, bodyToBeReturned){
-    try{
-        fs.writeFileSync(usersFile, JSON.stringify(userList),'utf-8')
-        ctx.body = bodyToBeReturned
-    }catch(err){
-        console.err(err)
-        ctx.throw(500)
-    }
+async function saveUserList(ctx, userList, bodyToBeReturned){
+    await fs.writeFile(usersFile, JSON.stringify(userList) , 'utf-8', (err)=>{
+        if(err){
+            console.log(err)
+            ctx.throw(500)
+        }else{
+            ctx.body = bodyToBeReturned
+        }
+    })
 }
 
+// function saveUserList(ctx, userList, bodyToBeReturned){
+//     try{
+//         fs.writeFileSync(usersFile, JSON.stringify(userList),'utf-8')
+//         ctx.body = bodyToBeReturned
+//     }catch(err){
+//         console.err(err)
+//         ctx.throw(500)
+//     }
+// }
 
-router.get('/users', ctx=>{
-    const data = JSON.parse(fs.readFileSync(usersFile, {encoding:'utf8', flag:'r'}) )
-    ctx.body = data
+
+router.get('/users', async ctx=>{
+    const users = await readFile(usersFile)
+    ctx.body = users
 })
 
 router.post('/users', async ctx=>{
@@ -108,7 +121,7 @@ router.post('/users', async ctx=>{
         return
     
     userList.push(newUser)
-    saveUserList(ctx, userList, newUser)
+    await saveUserList(ctx, userList, newUser)
 })
 
 router.put('/users/:id', async ctx=>{
