@@ -11,7 +11,6 @@ const router = new KoaRouter()
 const { User,Telephone } = require('./sq')
 
 const usersFile = __dirname+'/data/users.json'
-// var userList = []
 
 async function readFile(fileName){
     return new Promise((resolve, reject) => {
@@ -26,20 +25,6 @@ async function readFile(fileName){
         })
     })
 }
-
-// fs.readFile(usersFile,'utf-8',(err,content)=>{
-//     userList = JSON.parse(content) || []
-
-//     if(err)
-//         console.log(err)
-//     else{
-//         router.get('/users',ctx=>{
-//             ctx.body = userList
-//         })
-//     }
-// })
-
-// Functions used
 
 function userContainsRequiredFields(ctx,newUser){
     if (!newUser.id || !newUser.firstName || !newUser.lastName || !newUser.telephones  ){
@@ -93,17 +78,6 @@ async function saveUserList(ctx, userList, bodyToBeReturned){
         }
     })
 }
-
-// function saveUserList(ctx, userList, bodyToBeReturned){
-//     try{
-//         fs.writeFileSync(usersFile, JSON.stringify(userList),'utf-8')
-//         ctx.body = bodyToBeReturned
-//     }catch(err){
-//         console.err(err)
-//         ctx.throw(500)
-//     }
-// }
-
 
 router.get('/users', async ctx=>{
     const users = await readFile(usersFile)
