@@ -43,8 +43,8 @@ Telephone.init({
 })
 
 
-User.Telephone = User.hasMany(Telephone, {as: 'telephones',  foreignKey: 'user_id', constraints: false})
-Telephone.User = Telephone.belongsTo(User, {as: 'user', foreignKey: 'id', constraints: false})
+User.Telephone = User.hasMany(Telephone, {foreignKey: 'user_id', constraints: false})
+Telephone.User = Telephone.belongsTo(User, { foreignKey: 'id', constraints: false})
 
 sequelize.sync()
 

@@ -2,135 +2,92 @@ require("@babel/register");
 const Koa = require('koa');
 const json = require('koa-json');
 const cors = require('@koa/cors')
-// const cors = require('koa-cors')
 const KoaRouter = require('koa-router');
 const BodyParser = require('koa-bodyparser');
-const fs = require('fs')
+const _ = require('lodash')
 const app = new Koa()
 const router = new KoaRouter()
 const { User,Telephone } = require('./sq')
 
 const usersFile = __dirname+'/data/users.json'
 
-async function readFile(fileName){
-    return new Promise((resolve, reject) => {
-        fs.readFile(fileName,'utf-8',(err,content)=>{
-            result = JSON.parse(content) || []
-        
-            if(err)
-                reject(err)
-            else{
-                resolve(result)
-            }
-        })
-    })
-}
-
-function userContainsRequiredFields(ctx,newUser){
-    if (!newUser.id || !newUser.firstName || !newUser.lastName || !newUser.telephones  ){
-        ctx.body = 'Incomplete request. You must include firstName'
-        ctx.throw(400)
-        return false;
-    }
-    return true
-}
-
-function userIdIsUnique(ctx, userId, userList){
-    if( userList.find(user=>user.id === userId) ){
-        ctx.response.body = 'User already exists'
-        ctx.throw(409)
-        return false;
-    }
-    return true
-}
-
-function passedTelephoneValidation(ctx, user){
-    let idList = []
-    let success = user.telephones.every(tel=>{
-        if(!tel.id || !tel.name || !tel.number){
-            ctx.response.body = 'Telephone is missing one or more required fields (id, name, number)'
-            ctx.throw(400)
-            return false
-        }
-        
-        if(idList.indexOf(tel.id)>1){
-            ctx.response.body = 'Duplicate telephone ID'
-            ctx.throw(400)
-            return false
-        }
-
-        idList.push(tel.id)
-        return true
-    })
-    if (!success)
-        return false
-
-    return true
-}
-
-async function saveUserList(ctx, userList, bodyToBeReturned){
-    await fs.writeFile(usersFile, JSON.stringify(userList) , 'utf-8', (err)=>{
-        if(err){
-            console.log(err)
-            ctx.throw(500)
-        }else{
-            ctx.body = bodyToBeReturned
-        }
-    })
-}
-
 router.get('/users', async ctx=>{
-    const users = await readFile(usersFile)
-    ctx.body = users
+    const queriedUsers = await User.findAll({include: [Telephone]})
+
+    ctx.body = queriedUsers.map(data=>{
+        let {firstName, lastName, id, telephones} = data.dataValues
+        return {id, firstName, lastName, telephones}
+    })
+})
+
+const cleanUser = (u) => ({
+    id: u.id,
+    firstName: u.firstName,
+    lastName: u.lastName,
+    telephones: u.telephones ? u.telephones.map(t => ({
+        id: t.id,
+        name: t.name,
+        number: t.number                
+    })) : []
 })
 
 router.post('/users', async ctx=>{
-    const newUser = ctx.request.body
-    let userList = JSON.parse(fs.readFileSync(usersFile, {encoding:'utf8', flag:'r'}))
+    const submittedUser = ctx.request.body
+    try{
+        let dbUser;
+        let {firstName, lastName} = submittedUser
+        if(submittedUser.telephones && submittedUser.telephones.length>0){
+            let telephones = submittedUser.telephones.map(tel=>({name:tel.name, number:tel.number})) 
+            dbUser = await User.create({firstName, lastName,telephones},{include: [Telephone]})
+        }else{
+            console.log(submittedUser)
+            dbUser = await User.create({firstName, lastName})
+        }
+        // ctx.body = _.pick({
+        //     ...dbUser.dataValues,
+        //     telephones: dbUser.dataValues.telephones.map(t => _.pick(t, ['id', 'name', 'number']))
+        // }, ['id', 'firstName', 'lastName', 'telephones'])
 
-    if(!userContainsRequiredFields(ctx, newUser) || !userIdIsUnique(ctx, newUser.id, userList))
-        return;
+        ctx.body = cleanUser(dbUser.dataValues)
 
-    if(!passedTelephoneValidation(ctx, newUser))
-        return
-    
-    userList.push(newUser)
-    await saveUserList(ctx, userList, newUser)
+    }catch(e){
+        console.error(e)
+        ctx.status = 500
+    }
 })
 
 router.put('/users/:id', async ctx=>{
     const id = ctx.params.id
     const user = ctx.request.body
-    let userList = JSON.parse(fs.readFileSync(usersFile, {encoding:'utf8', flag:'r'}))
-
-    if(!userContainsRequiredFields(ctx, user))
-        return;
-
-    if(!passedTelephoneValidation(ctx, user))
-        return;
     
-    let updatedUserIndex = userList.findIndex(u=>u.id===id)  
-    if(updatedUserIndex>-1)
-        userList.splice(updatedUserIndex, 1, user)
-    else
-        userList.push(user)
+    try{
+        await User.update(user, { where: {id}})
+        await Telephone.destroy({ where: {user_id:id}})
+        await Telephone.bulkCreate(user.telephones.map(t=>({..._.omit(t,['id']),user_id:id})))
+        
+        ctx.body = cleanUser(await User.findOne({where:{id}, include:[Telephone]}))
+    }catch(e){
+        console.error(e)
+        ctx.status = 500
+    }
 
-    saveUserList(ctx, userList, user)
+
 })
 
 router.del('/users/:id', ctx=>{
     const id = ctx.params.id
-    let userList = JSON.parse(fs.readFileSync(usersFile, {encoding:'utf8', flag:'r'}))
-
-    let updatedUserIndex = userList.findIndex(u=>u.id===id)  
-    if(updatedUserIndex>-1){
-        userList.splice(updatedUserIndex, 1)
-        saveUserList(ctx, userList, {})
+    try{
+        Telephone.destroy({where:{user_id:id}})
+        User.destroy({where:{id}})
+        ctx.status = 200
     }
-    else
-        ctx.throw(404)
+    catch(e){
+        console.error(e)
+        ctx.status = 500
+    }
 
 })
+
 
 app.use(cors())
 .use(json())
