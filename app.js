@@ -8,7 +8,7 @@ const BodyParser = require('koa-bodyparser');
 const fs = require('fs')
 const app = new Koa()
 const router = new KoaRouter()
-const SQ = require('./sq')
+const { User,Telephone } = require('./sq')
 
 const usersFile = __dirname+'/data/users.json'
 // var userList = []
@@ -164,3 +164,4 @@ app.use(cors())
 .use(router.routes())
 .use(router.allowedMethods())
 .listen(3000)
+
